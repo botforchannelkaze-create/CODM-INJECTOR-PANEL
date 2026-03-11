@@ -13,7 +13,7 @@ ip_cooldown = {}
 
 TOKEN_EXPIRY = 20
 COOLDOWN = 60
-KEY_EXPIRY = 86400
+KEY_EXPIRY = 30
 
 
 # ======================
