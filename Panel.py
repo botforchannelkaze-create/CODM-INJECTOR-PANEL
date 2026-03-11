@@ -7,45 +7,54 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# storage
 keys = {}
-ip_cooldown = {}
+tokens = {}
 
-# =========================
+# ======================
+# CREATE TOKEN
+# ======================
+@app.route("/token")
+def token():
+
+    ref = request.headers.get("Referer","")
+
+    if "work.ink" not in ref:
+        return "denied"
+
+    token = str(uuid.uuid4())
+
+    tokens[token] = {
+        "time": time.time()
+    }
+
+    return token
+
+# ======================
 # GET KEY
-# =========================
+# ======================
 @app.route("/getkey")
 def getkey():
 
-    ref = request.headers.get("Referer","")
-    ip = request.remote_addr
-    now = time.time()
+    token = request.args.get("token")
 
-    # allow only work.ink or your key page
-    if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
-        return "Access denied"
+    if token not in tokens:
+        return "Access denied please go to main link"
 
-    # anti spam (30 sec cooldown per IP)
-    if ip in ip_cooldown:
-        if now - ip_cooldown[ip] < 30:
-            wait = int(30 - (now - ip_cooldown[ip]))
-            return f"Please wait {wait}s before generating another key"
+    # token one time use
+    del tokens[token]
 
-    ip_cooldown[ip] = now
-
-    # generate key
     key = str(uuid.uuid4())
 
     keys[key] = {
-        "expiry": time.time() + 86400,  # 24 hours
+        "expiry": time.time() + 86400,
         "device": None
     }
 
     return f"YOUR KEY: {key}"
 
-# =========================
-# VERIFY KEY
-# =========================
+# ======================
+# VERIFY
+# ======================
 @app.route("/verify")
 def verify():
 
@@ -57,28 +66,18 @@ def verify():
 
     data = keys[key]
 
-    # check expiration
     if time.time() > data["expiry"]:
         del keys[key]
         return "expired"
 
-    # first device bind
     if data["device"] is None:
         data["device"] = device
         return "valid"
 
-    # same device
     if data["device"] == device:
         return "valid"
 
-    # different device
     return "locked"
 
-# =========================
-# RUN SERVER
-# =========================
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT",10000))
-)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
