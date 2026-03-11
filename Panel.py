@@ -11,9 +11,9 @@ keys = {}
 tokens = {}
 ip_cooldown = {}
 
-TOKEN_EXPIRY = 20     # seconds for token validity
-COOLDOWN = 60         # seconds between key requests per IP
-KEY_EXPIRY = 180       # seconds until key expires
+TOKEN_EXPIRY = 20
+COOLDOWN = 60
+KEY_EXPIRY = 180
 
 
 # ======================
@@ -22,15 +22,10 @@ KEY_EXPIRY = 180       # seconds until key expires
 def cleanup():
     now = time.time()
 
-    # remove expired tokens
+    # remove expired tokens only
     expired_tokens = [t for t,d in tokens.items() if now - d["time"] > TOKEN_EXPIRY]
     for t in expired_tokens:
         del tokens[t]
-
-    # remove expired keys
-    expired_keys = [k for k,d in keys.items() if now > d["expiry"]]
-    for k in expired_keys:
-        del keys[k]
 
 
 # ======================
@@ -47,12 +42,15 @@ def token():
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
-    # anti-spam cooldown
     if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
         return "Please wait before getting another key"
 
     t = str(uuid.uuid4())
-    tokens[t] = {"time": time.time(), "ip": ip}
+
+    tokens[t] = {
+        "time": time.time(),
+        "ip": ip
+    }
 
     return t
 
@@ -73,24 +71,24 @@ def getkey():
 
     data = tokens[token]
 
-    # token expiration
     if time.time() - data["time"] > TOKEN_EXPIRY:
         del tokens[token]
         return "Token expired"
 
-    # IP verification
     if data["ip"] != ip:
         del tokens[token]
         return "Access denied"
 
-    # one-time use token
     del tokens[token]
 
-    # start cooldown for IP
     ip_cooldown[ip] = time.time()
 
     key = str(uuid.uuid4())
-    keys[key] = {"expiry": time.time() + KEY_EXPIRY, "device": None}
+
+    keys[key] = {
+        "expiry": time.time() + KEY_EXPIRY,
+        "device": None
+    }
 
     return f"YOUR KEY: {key}"
 
@@ -111,18 +109,20 @@ def verify():
 
     data = keys[key]
 
+    # EXPIRED CHECK
     if time.time() > data["expiry"]:
-        # remove expired key to save memory
-        del keys[key]
         return "expired"
 
+    # FIRST LOGIN
     if data["device"] is None:
         data["device"] = device
         return "valid"
 
+    # SAME DEVICE
     if data["device"] == device:
         return "valid"
 
+    # OTHER DEVICE
     return "locked"
 
 
