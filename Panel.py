@@ -29,6 +29,7 @@ def token():
 
     return t
 
+
 # ======================
 # GET KEY
 # ======================
@@ -50,6 +51,7 @@ def getkey():
     }
 
     return f"YOUR KEY: {key}"
+
 
 # ======================
 # VERIFY
@@ -78,25 +80,6 @@ def verify():
 
     return "locked"
 
-# ======================
-# RUN SERVER
-# ======================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
-    data = keys[key]
-
-    if time.time() > data["expiry"]:
-        del keys[key]
-        return "expired"
-
-    if data["device"] is None:
-        data["device"] = device
-        return "valid"
-
-    if data["device"] == device:
-        return "valid"
-
-    return "locked"
 
 # ======================
 # RUN SERVER
