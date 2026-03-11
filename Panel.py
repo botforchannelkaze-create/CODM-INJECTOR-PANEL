@@ -9,6 +9,10 @@ CORS(app)
 
 keys = {}
 tokens = {}
+ip_cooldown = {}
+
+TOKEN_EXPIRY = 30
+COOLDOWN = 30
 
 # ======================
 # CREATE TOKEN
@@ -17,14 +21,20 @@ tokens = {}
 def token():
 
     ref = request.headers.get("Referer","")
+    ip = request.remote_addr
 
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "denied"
 
+    # IP cooldown
+    if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
+        return "Please wait before getting another key"
+
     t = str(uuid.uuid4())
 
     tokens[t] = {
-        "time": time.time()
+        "time": time.time(),
+        "ip": ip
     }
 
     return t
@@ -37,11 +47,26 @@ def token():
 def getkey():
 
     token = request.args.get("token")
+    ip = request.remote_addr
 
     if token not in tokens:
         return "Access denied please go to main link"
 
+    data = tokens[token]
+
+    # token expire
+    if time.time() - data["time"] > TOKEN_EXPIRY:
+        del tokens[token]
+        return "Token expired"
+
+    # ip mismatch protection
+    if data["ip"] != ip:
+        del tokens[token]
+        return "Access denied"
+
     del tokens[token]
+
+    ip_cooldown[ip] = time.time()
 
     key = str(uuid.uuid4())
 
