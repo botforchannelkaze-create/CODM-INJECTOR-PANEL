@@ -19,7 +19,7 @@ def token():
     ref = request.headers.get("Referer","")
 
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
-    return "denied"
+        return "denied"
 
     token = str(uuid.uuid4())
 
@@ -79,5 +79,8 @@ def verify():
 
     return "locked"
 
+# ======================
+# RUN SERVER
+# ======================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
