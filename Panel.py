@@ -12,8 +12,8 @@ def getkey():
 
     ref = request.headers.get("Referer","")
 
-    # allow only if coming from work.ink
-    if "work.ink" not in ref:
+    # allow work.ink OR your key page
+    if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
     key = str(uuid.uuid4())
