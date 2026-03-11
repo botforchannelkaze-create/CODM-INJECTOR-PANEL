@@ -1,16 +1,24 @@
 from flask import Flask, request
 from flask_cors import CORS
-import uuid, time
+import uuid, time, os
 
 app = Flask(__name__)
-CORS(app)  # allow cross-site requests
+CORS(app)
 
 keys = {}
 
 @app.route("/getkey")
 def getkey():
+
+    ref = request.headers.get("Referer","")
+
+    # allow only if coming from work.ink
+    if "work.ink" not in ref:
+        return "Access denied"
+
     key = str(uuid.uuid4())
     keys[key] = {"expiry": time.time()+86400, "device": None}
+
     return f"YOUR KEY: {key}"
 
 @app.route("/verify")
@@ -35,5 +43,4 @@ def verify():
 
     return "locked"
 
-import os
 app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
