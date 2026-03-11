@@ -11,16 +11,15 @@ keys = {}
 tokens = {}
 ip_cooldown = {}
 
-TOKEN_EXPIRY = 20
-COOLDOWN = 60
-KEY_EXPIRY = 30
+TOKEN_EXPIRY = 20     # seconds for token validity
+COOLDOWN = 60         # seconds between key requests per IP
+KEY_EXPIRY = 180       # seconds until key expires
 
 
 # ======================
 # CLEANUP FUNCTION
 # ======================
 def cleanup():
-
     now = time.time()
 
     # remove expired tokens
@@ -48,16 +47,12 @@ def token():
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
-    # anti spam cooldown
+    # anti-spam cooldown
     if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
         return "Please wait before getting another key"
 
     t = str(uuid.uuid4())
-
-    tokens[t] = {
-        "time": time.time(),
-        "ip": ip
-    }
+    tokens[t] = {"time": time.time(), "ip": ip}
 
     return t
 
@@ -73,10 +68,7 @@ def getkey():
     token = request.args.get("token")
     ip = request.remote_addr
 
-    if not token:
-        return "Access denied"
-
-    if token not in tokens:
+    if not token or token not in tokens:
         return "Access denied please go to main link"
 
     data = tokens[token]
@@ -91,18 +83,14 @@ def getkey():
         del tokens[token]
         return "Access denied"
 
-    # one time token
+    # one-time use token
     del tokens[token]
 
-    # cooldown start
+    # start cooldown for IP
     ip_cooldown[ip] = time.time()
 
     key = str(uuid.uuid4())
-
-    keys[key] = {
-        "expiry": time.time() + KEY_EXPIRY,
-        "device": None
-    }
+    keys[key] = {"expiry": time.time() + KEY_EXPIRY, "device": None}
 
     return f"YOUR KEY: {key}"
 
@@ -124,6 +112,7 @@ def verify():
     data = keys[key]
 
     if time.time() > data["expiry"]:
+        # remove expired key to save memory
         del keys[key]
         return "expired"
 
