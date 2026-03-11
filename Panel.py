@@ -18,8 +18,8 @@ def token():
 
     ref = request.headers.get("Referer","")
 
-    if "work.ink" not in ref:
-        return "denied"
+    if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
+    return "denied"
 
     token = str(uuid.uuid4())
 
