@@ -5,51 +5,49 @@ import time
 import os
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app)
 
 keys = {}
 tokens = {}
+# Ito ang magbabantay sa IP address nila
+ip_usage = {} 
 
-TOKEN_EXPIRY = 300 
-KEY_EXPIRY = 86400 
-
-def cleanup():
-    now = time.time()
-    for t in list(tokens.items()):
-        if now - t[1]["time"] > TOKEN_EXPIRY:
-            del tokens[t[0]]
-    for k in list(keys.items()):
-        if now > k[1]["expiry"]:
-            del keys[k[0]]
-
-@app.route("/")
-def home():
-    return "KAZE AUTO-ENFORCER IS LIVE! 🛡️"
+KEY_EXPIRY = 86400  # 24 hours validity ng key
+COOLDOWN = 300      # 5 minutes bago makakuha ulit ng panibagong key ang IP
 
 @app.route("/token")
 def create_token():
-    cleanup()
     source = request.args.get("source")
     ip = request.remote_addr
+    now = time.time()
 
+    # 1. Anti-Bypass: Dapat dumaan sa link
     if source != "workink":
-        return "BYPASS DETECTED: Go back to main link.", 403
+        return "DENIED: Use the official link.", 403
+
+    # 2. 5-Minute Limit: Check kung nakakuha na ang IP na to recently
+    if ip in ip_usage:
+        if now - ip_usage[ip] < COOLDOWN:
+            return "LIMIT: You can only get 1 key every 5 minutes.", 429
 
     t = str(uuid.uuid4())
-    tokens[t] = {"time": time.time(), "ip": ip}
+    tokens[t] = {"ip": ip, "time": now}
     return t
 
 @app.route("/getkey")
 def getkey():
-    cleanup()
     token_input = request.args.get("token")
     ip = request.remote_addr
 
     if not token_input or token_input not in tokens:
-        return jsonify({"status": "error", "message": "Token Expired/Used. Get a new one from official link."}), 403
+        return jsonify({"status": "error", "message": "Expired/Invalid Token."}), 403
     
-    # BURAHIN AGAD PARA HINDI MA-REFRESH
-    del tokens[token_input] 
+    if tokens[token_input]["ip"] != ip:
+        return jsonify({"status": "error", "message": "IP Mismatch."}), 403
+
+    # SUNUGIN AGAD ANG TOKEN AT I-RECORD ANG IP
+    del tokens[token_input]
+    ip_usage[ip] = time.time()
 
     key = "KazeKey-" + uuid.uuid4().hex[:12].upper()
     keys[key] = {"expiry": time.time() + KEY_EXPIRY, "device": None}
@@ -60,13 +58,11 @@ def getkey():
 def verify():
     key = request.args.get("key")
     device = request.args.get("device")
-    if not key or key not in keys: return "invalid"
-    if time.time() > keys[key]["expiry"]: return "expired"
-    if keys[key]["device"] is None:
-        keys[key]["device"] = device
-        return "valid"
-    return "valid" if keys[key]["device"] == device else "locked"
+    if key in keys:
+        if keys[key]["device"] is None or keys[key]["device"] == device:
+            keys[key]["device"] = device
+            return "valid"
+    return "invalid"
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
