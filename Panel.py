@@ -11,8 +11,8 @@ keys = {}
 tokens = {}
 ip_cooldown = {}
 
-TOKEN_EXPIRY = 10
-COOLDOWN = 80
+TOKEN_EXPIRY = 20
+COOLDOWN = 60
 KEY_EXPIRY = 180
 
 
@@ -29,6 +29,7 @@ def cleanup():
     for t in expired_tokens:
         del tokens[t]
 
+
 # ======================
 # CREATE TOKEN
 # ======================
@@ -40,18 +41,17 @@ def token():
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
-    # allow only work.ink or key page
-    if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
-        return "Access denied"
-
-    # APPLY cooldown ONLY if not coming from work.ink
+    # allow only if coming from work.ink
     if "work.ink" not in ref:
+        return "Access denied please go through main link"
 
-        if ip in ip_cooldown:
-            remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+    # cooldown protection
+    if ip in ip_cooldown:
 
-            if remaining > 0:
-                return f"Please wait {int(remaining)} seconds"
+        remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+
+        if remaining > 0:
+            return f"Please wait {int(remaining)} seconds"
 
     token = str(uuid.uuid4())
 
@@ -61,7 +61,6 @@ def token():
     }
 
     return token
-
 
 
 # ======================
@@ -123,7 +122,7 @@ def verify():
 
     data = keys[key]
 
-    # expired key
+    # key expired
     if time.time() > data["expiry"]:
         return "expired"
 
