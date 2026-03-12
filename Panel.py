@@ -9,11 +9,11 @@ CORS(app)
 
 keys = {}
 tokens = {}
-ip_cooldown = {}
+ip_limit = {}
 
 TOKEN_EXPIRY = 20
 KEY_EXPIRY = 180
-COOLDOWN = 9000
+KEY_INTERVAL = 300   # 12 hours
 
 
 # ======================
@@ -45,16 +45,17 @@ def token():
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
-    # ALLOW ONLY GPLINKS OR KEY PAGE
+    # allow only gplinks or key page
     if ("gplinks.co" not in ref) and ("kaze-key-page.onrender.com" not in ref):
-        return "Please go to main link: https://gplinks.co/Kaze-DailyGetFreeKey"
+        return "Access denied. Please go to main link: https://gplinks.co/Kaze-DailyGetFreeKey"
 
-    # APPLY COOLDOWN ONLY IF NOT FROM GPLINKS
-    if "gplinks.co" not in ref:
-        if ip in ip_cooldown:
-            remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
-            if remaining > 0:
-                return f"Please wait {int(remaining)} seconds"
+    # limit 1 key per 12 hours
+    if ip in ip_limit:
+        remaining = KEY_INTERVAL - (time.time() - ip_limit[ip])
+        if remaining > 0:
+            hours = int(remaining // 3600)
+            minutes = int((remaining % 3600) // 60)
+            return f"You already generated a key. Try again in {hours}h {minutes}m."
 
     token = str(uuid.uuid4())
 
@@ -81,25 +82,25 @@ def getkey():
         return "Access denied"
 
     if token not in tokens:
-        return "Access denied please go to main link"
+        return "Access denied. Please go through main link."
 
     data = tokens[token]
 
-    # TOKEN EXPIRED
+    # token expired
     if time.time() - data["time"] > TOKEN_EXPIRY:
         del tokens[token]
         return "Token expired"
 
-    # IP MISMATCH
+    # ip mismatch
     if data["ip"] != ip:
         del tokens[token]
         return "Access denied"
 
-    # ONE TIME TOKEN
+    # one time token
     del tokens[token]
 
-    # START COOLDOWN
-    ip_cooldown[ip] = time.time()
+    # register ip usage
+    ip_limit[ip] = time.time()
 
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
 
@@ -127,21 +128,21 @@ def verify():
 
     data = keys[key]
 
-    # KEY EXPIRED
+    # expired key
     if time.time() > data["expiry"]:
         del keys[key]
         return "expired"
 
-    # FIRST LOGIN BINDS DEVICE
+    # first login bind device
     if data["device"] is None:
         data["device"] = device
         return "valid"
 
-    # SAME DEVICE
+    # same device
     if data["device"] == device:
         return "valid"
 
-    # OTHER DEVICE BLOCKED
+    # other device blocked
     return "locked"
 
 
