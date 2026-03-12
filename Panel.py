@@ -12,8 +12,8 @@ tokens = {}
 ip_cooldown = {}
 
 TOKEN_EXPIRY = 20
-COOLDOWN = 9000
 KEY_EXPIRY = 180
+COOLDOWN = 9000
 
 
 # ======================
@@ -49,11 +49,12 @@ def token():
     if ("gplinks.co" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Please go to main link: https://gplinks.co/Kaze-DailyGetFreeKey"
 
-    # COOLDOWN PROTECTION
-    if ip in ip_cooldown:
-        remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
-        if remaining > 0:
-            return f"Please wait {int(remaining)} seconds"
+    # APPLY COOLDOWN ONLY IF NOT FROM GPLINKS
+    if "gplinks.co" not in ref:
+        if ip in ip_cooldown:
+            remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+            if remaining > 0:
+                return f"Please wait {int(remaining)} seconds"
 
     token = str(uuid.uuid4())
 
@@ -84,12 +85,12 @@ def getkey():
 
     data = tokens[token]
 
-    # token expired
+    # TOKEN EXPIRED
     if time.time() - data["time"] > TOKEN_EXPIRY:
         del tokens[token]
         return "Token expired"
 
-    # ip mismatch
+    # IP MISMATCH
     if data["ip"] != ip:
         del tokens[token]
         return "Access denied"
@@ -126,11 +127,12 @@ def verify():
 
     data = keys[key]
 
-    # key expired
+    # KEY EXPIRED
     if time.time() > data["expiry"]:
+        del keys[key]
         return "expired"
 
-    # FIRST LOGIN BIND DEVICE
+    # FIRST LOGIN BINDS DEVICE
     if data["device"] is None:
         data["device"] = device
         return "valid"
@@ -139,7 +141,7 @@ def verify():
     if data["device"] == device:
         return "valid"
 
-    # OTHER DEVICE
+    # OTHER DEVICE BLOCKED
     return "locked"
 
 
