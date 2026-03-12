@@ -1,21 +1,24 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from threading import Thread
 import uuid
 import time
 import os
 
+# Isang App lang ang kailangan natin para sa lahat
 app = Flask(__name__)
-CORS(app)
+# Importante: payagan ang HTML mo na makapag-request dito
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Database sa memory (Mas mainam kung sa Redis o SQLite pero ito muna para sa Render)
+# Databases sa memory
 keys = {}
 tokens = {}
 ip_cooldown = {}
-used_tokens = set() # Dagdag ito para hindi ma-reuse ang token
+used_tokens = set()
 
-TOKEN_EXPIRY = 60 # Gawin nating 1 minute para hindi sila masyadong madaliin
-COOLDOWN = 300   # 5 minutes cooldown bago makakuha ulit ng panibagong key
-KEY_EXPIRY = 86400 # 24 Hours para sa user convenience
+TOKEN_EXPIRY = 60 
+COOLDOWN = 300   
+KEY_EXPIRY = 86400 
 
 def cleanup():
     now = time.time()
@@ -28,21 +31,24 @@ def cleanup():
         if now > keys[k]["expiry"]:
             del keys[k]
 
+# Ito ang "Keep Alive" at Home Page mo
+@app.route("/")
+def home():
+    return "KAZE SERVER IS ONLINE! 🚀"
+
 @app.route("/token")
 def create_token():
     cleanup()
-    
-    # Mas mahigpit na check
-    ref = request.headers.get("Referer","")
+    ref = request.headers.get("Referer", "")
     ip = request.remote_addr
 
-    # Siguraduhin na galing lang sa Work.ink ang request
-    if "work.ink" not in ref:
+    # Anti-Bypass: Check kung galing sa Work.ink
+    if "work.ink" not in ref and "render.com" not in ref:
         return "ERROR: Please use the official link.", 403
 
-    # Cooldown Check
+    # Cooldown Check per IP
     if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
-        return "COOLDOWN: Please wait 5 minutes.", 429
+        return f"COOLDOWN: Please wait {int(COOLDOWN - (time.time() - ip_cooldown[ip]))}s.", 429
 
     t = str(uuid.uuid4())
     tokens[t] = {
@@ -54,38 +60,27 @@ def create_token():
 @app.route("/getkey")
 def getkey():
     cleanup()
-    
     token_input = request.args.get("token")
     ip = request.remote_addr
 
-    # Check if token exists, not expired, and not yet used
     if not token_input or token_input not in tokens:
-        return "ACCESS DENIED: Go back to the main link.", 403
+        return jsonify({"status": "error", "message": "Invalid or Expired Token"}), 403
     
-    if token_input in used_tokens:
-        return "BYPASS DETECTED: Token already used.", 403
-
     data = tokens[token_input]
 
-    # Security Checks
-    if time.time() - data["time"] > TOKEN_EXPIRY:
-        return "TOKEN EXPIRED: Refresh the link.", 403
     if data["ip"] != ip:
-        return "IP MISMATCH: Don't use VPN/Proxy.", 403
+        return jsonify({"status": "error", "message": "IP Mismatch"}), 403
 
-    # Mark as used and start cooldown
-    used_tokens.add(token_input)
+    # Mark as used and generate key
     ip_cooldown[ip] = time.time()
-    del tokens[token_input]
+    del tokens[token_input] # Delete agad para 'di na ma-reuse
 
-    # Generate the actual key
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
     keys[key] = {
         "expiry": time.time() + KEY_EXPIRY,
         "device": None
     }
 
-    # I-return natin bilang JSON para mas malinis sa website mo
     return jsonify({"status": "success", "key": key})
 
 @app.route("/verify")
@@ -111,4 +106,6 @@ def verify():
     return "locked"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    # Isang beses lang natin patatakbuhin ang app.run
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
