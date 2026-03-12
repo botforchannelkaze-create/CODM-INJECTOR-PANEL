@@ -11,10 +11,10 @@ CORS(app)
 # ======================
 # Constants
 # ======================
-TOKEN_EXPIRY = 60       # token valid for 3 minutes
-KEY_EXPIRY = 180        # key valid for 30 minutes
-COOLDOWN = 10            # seconds between token requests
-KEY_LIMIT = 60           # 90 seconds before same IP can get new key
+TOKEN_EXPIRY = 60       # token valid 60s
+KEY_EXPIRY = 180        # key valid 180s
+COOLDOWN = 10           # seconds between token requests
+KEY_LIMIT = 60          # seconds before same IP can get new key
 DATA_FILE = "database.json"
 
 # ======================
@@ -51,7 +51,7 @@ def cleanup():
         if now > db["keys"][k]["expiry"]:
             del db["keys"][k]
 
-    # remove expired IP limits (so same IP can get key after KEY_LIMIT)
+    # remove expired IP limits
     for ip in list(db["ip_daily"].keys()):
         if now - db["ip_daily"][ip] > KEY_LIMIT:
             del db["ip_daily"][ip]
@@ -68,22 +68,30 @@ def home():
 # ======================
 @app.route("/token")
 def token():
+
     cleanup()
+
     ip = request.remote_addr
     now = time.time()
 
-    # Limit per IP (90s)
+    # IP limit
     if ip in db["ip_daily"] and now - db["ip_daily"][ip] < KEY_LIMIT:
         return "Access denied please go to main link",403
 
-    # Cooldown protection
+    # cooldown
     if ip in db["cooldown"] and now - db["cooldown"][ip] < COOLDOWN:
         wait = int(COOLDOWN - (now - db["cooldown"][ip]))
         return f"Cooldown active. Wait {wait}s",429
 
     token_id = str(uuid.uuid4())
-    db["tokens"][token_id] = {"ip": ip, "time": now}
+
+    db["tokens"][token_id] = {
+        "ip": ip,
+        "time": now
+    }
+
     db["cooldown"][ip] = now
+
     save_db()
 
     return token_id
@@ -93,7 +101,9 @@ def token():
 # ======================
 @app.route("/getkey")
 def getkey():
+
     cleanup()
+
     token_id = request.args.get("token")
     ip = request.remote_addr
     now = time.time()
@@ -111,22 +121,33 @@ def getkey():
         save_db()
         return jsonify({"status":"error","message":"Token expired"}),403
 
-    # Generate key
+    # generate key
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
-    db["keys"][key] = {"expiry": now + KEY_EXPIRY, "device": None}
+
+    db["keys"][key] = {
+        "expiry": now + KEY_EXPIRY,
+        "device": None
+    }
+
     db["ip_daily"][ip] = now
 
     del db["tokens"][token_id]
+
     save_db()
 
-    return jsonify({"status":"success","key": key})
+    return jsonify({
+        "status":"success",
+        "key":key
+    })
 
 # ======================
 # Verify Key
 # ======================
 @app.route("/verify")
 def verify():
+
     cleanup()
+
     key = request.args.get("key")
     device = request.args.get("device")
 
@@ -151,7 +172,65 @@ def verify():
     return "locked"
 
 # ======================
-# Run
+# ADMIN: VIEW DATABASE
+# ======================
+@app.route("/admin_debug")
+def admin_debug():
+
+    cleanup()
+
+    return jsonify({
+        "active_ips": db["ip_daily"],
+        "cooldowns": db["cooldown"],
+        "active_keys": db["keys"],
+        "tokens": db["tokens"]
+    })
+
+# ======================
+# ADMIN: REMOVE IP
+# ======================
+@app.route("/admin_remove_ip/<ip>")
+def admin_remove_ip(ip):
+
+    removed = False
+
+    if ip in db["ip_daily"]:
+        del db["ip_daily"][ip]
+        removed = True
+
+    if ip in db["cooldown"]:
+        del db["cooldown"][ip]
+        removed = True
+
+    save_db()
+
+    if removed:
+        return f"IP {ip} removed successfully"
+    else:
+        return "IP not found"
+
+# ======================
+# ADMIN: CLEAR ALL IP
+# ======================
+@app.route("/admin_clear_all")
+def admin_clear_all():
+
+    db["ip_daily"].clear()
+    db["cooldown"].clear()
+
+    save_db()
+
+    return "All IP locks cleared"
+
+# ======================
+# SHOW CURRENT IP
+# ======================
+@app.route("/myip")
+def myip():
+    return request.remote_addr
+
+# ======================
+# Run Server
 # ======================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT",10000))
