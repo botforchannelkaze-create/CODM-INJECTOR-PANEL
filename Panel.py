@@ -13,7 +13,7 @@ ip_limit = {}
 
 TOKEN_EXPIRY = 20
 KEY_EXPIRY = 180
-KEY_INTERVAL = 43200   # 12 hours
+KEY_INTERVAL = 60  # 12 hours
 
 
 # ======================
@@ -23,10 +23,12 @@ def cleanup():
 
     now = time.time()
 
+    # remove expired sessions
     expired_sessions = [s for s,d in sessions.items() if now - d["time"] > TOKEN_EXPIRY]
     for s in expired_sessions:
         del sessions[s]
 
+    # remove expired keys
     expired_keys = [k for k,d in keys.items() if now > d["expiry"]]
     for k in expired_keys:
         del keys[k]
@@ -42,17 +44,30 @@ def session():
 
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
+    ua = request.headers.get("User-Agent","")
 
-    # allow only gplinks
-    if "gplinks.co" not in ref:
+    # block bots / empty agents
+    if not ua:
+        return "Access denied"
+
+    # allowed sources
+    allowed = [
+        "gplinks.co",
+        "kaze-key-page.onrender.com"
+    ]
+
+    # if referrer exists but not allowed -> block
+    if ref and not any(site in ref for site in allowed):
         return "Access denied. Use main link: https://gplinks.co/Kaze-DailyGetFreeKey"
 
     # 12 hour limit
     if ip in ip_limit:
         remaining = KEY_INTERVAL - (time.time() - ip_limit[ip])
         if remaining > 0:
+
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
+
             return f"You already generated a key. Try again in {hours}h {minutes}m"
 
     token = str(uuid.uuid4())
@@ -85,7 +100,7 @@ def getkey():
 
     data = sessions[token]
 
-    # token already used
+    # session already used
     if data["used"]:
         return "Session already used"
 
@@ -93,7 +108,7 @@ def getkey():
     if data["ip"] != ip:
         return "Access denied"
 
-    # token expired
+    # session expired
     if time.time() - data["time"] > TOKEN_EXPIRY:
         del sessions[token]
         return "Session expired"
@@ -134,7 +149,7 @@ def verify():
         del keys[key]
         return "expired"
 
-    # bind device
+    # first login bind device
     if data["device"] is None:
         data["device"] = device
         return "valid"
@@ -143,6 +158,7 @@ def verify():
     if data["device"] == device:
         return "valid"
 
+    # other device blocked
     return "locked"
 
 
