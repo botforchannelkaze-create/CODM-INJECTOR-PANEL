@@ -8,67 +8,66 @@ app = Flask(__name__)
 CORS(app)
 
 keys = {}
-tokens = {}
+sessions = {}
 ip_limit = {}
 
 TOKEN_EXPIRY = 20
 KEY_EXPIRY = 180
-KEY_INTERVAL = 300   # 12 hours
+KEY_INTERVAL = 60   # 12 hours
 
 
 # ======================
-# CLEANUP FUNCTION
+# CLEANUP
 # ======================
 def cleanup():
 
     now = time.time()
 
-    # remove expired tokens
-    expired_tokens = [t for t,d in tokens.items() if now - d["time"] > TOKEN_EXPIRY]
-    for t in expired_tokens:
-        del tokens[t]
+    expired_sessions = [s for s,d in sessions.items() if now - d["time"] > TOKEN_EXPIRY]
+    for s in expired_sessions:
+        del sessions[s]
 
-    # remove expired keys
     expired_keys = [k for k,d in keys.items() if now > d["expiry"]]
     for k in expired_keys:
         del keys[k]
 
 
 # ======================
-# CREATE TOKEN
+# CREATE SESSION TOKEN
 # ======================
-@app.route("/token")
-def token():
+@app.route("/session")
+def session():
 
     cleanup()
 
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
-    # allow only gplinks or key page
-    if ("gplinks.co" not in ref) and ("kaze-key-page.onrender.com" not in ref):
-        return "Access denied. Please go to main link: https://gplinks.co/Kaze-DailyGetFreeKey"
+    # allow only gplinks
+    if "gplinks.co" not in ref:
+        return "Access denied. Use main link: https://gplinks.co/Kaze-DailyGetFreeKey"
 
-    # limit 1 key per 12 hours
+    # 12 hour limit
     if ip in ip_limit:
         remaining = KEY_INTERVAL - (time.time() - ip_limit[ip])
         if remaining > 0:
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
-            return f"You already generated a key. Try again in {hours}h {minutes}m."
+            return f"You already generated a key. Try again in {hours}h {minutes}m"
 
     token = str(uuid.uuid4())
 
-    tokens[token] = {
+    sessions[token] = {
+        "ip": ip,
         "time": time.time(),
-        "ip": ip
+        "used": False
     }
 
     return token
 
 
 # ======================
-# GET KEY
+# GENERATE KEY
 # ======================
 @app.route("/getkey")
 def getkey():
@@ -81,23 +80,25 @@ def getkey():
     if not token:
         return "Access denied"
 
-    if token not in tokens:
-        return "Access denied. Please go through main link."
+    if token not in sessions:
+        return "Invalid session"
 
-    data = tokens[token]
+    data = sessions[token]
 
-    # token expired
-    if time.time() - data["time"] > TOKEN_EXPIRY:
-        del tokens[token]
-        return "Token expired"
+    # token already used
+    if data["used"]:
+        return "Session already used"
 
     # ip mismatch
     if data["ip"] != ip:
-        del tokens[token]
         return "Access denied"
 
-    # one time token
-    del tokens[token]
+    # token expired
+    if time.time() - data["time"] > TOKEN_EXPIRY:
+        del sessions[token]
+        return "Session expired"
+
+    sessions[token]["used"] = True
 
     # register ip usage
     ip_limit[ip] = time.time()
@@ -128,12 +129,12 @@ def verify():
 
     data = keys[key]
 
-    # expired key
+    # key expired
     if time.time() > data["expiry"]:
         del keys[key]
         return "expired"
 
-    # first login bind device
+    # bind device
     if data["device"] is None:
         data["device"] = device
         return "valid"
@@ -142,7 +143,6 @@ def verify():
     if data["device"] == device:
         return "valid"
 
-    # other device blocked
     return "locked"
 
 
