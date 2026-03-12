@@ -38,16 +38,13 @@ def create_token():
     source = request.args.get("source")
     ip = request.remote_addr
 
-    # 1. Anti-Bypass: Dapat may source=workink sa URL
+    # 1. Anti-Bypass lang ang ititira natin
+    # Dapat galing lang sila sa ?source=workink link
     if source != "workink":
-        return "BYPASS DETECTED: Go back to the official main link.", 403
+        return "BYPASS DETECTED: Use the official link.", 403
 
-    # 2. Anti-Unli: Check kung kakuha lang ng key ang IP na ito
-    if ip in already_generated:
-        time_passed = time.time() - already_generated[ip]
-        if time_passed < REGENERATE_COOLDOWN:
-            mins_left = int((REGENERATE_COOLDOWN - time_passed) / 60)
-            return f"SPAM PROTECTION: Please wait {mins_left} minutes before generating a new key.", 429
+    # ALISIN NATIN YUNG REGENERATE_COOLDOWN DITO 
+    # para makakuha sila ng bagong token basta dumaan sila sa link mo.
 
     t = str(uuid.uuid4())
     tokens[t] = {"time": time.time(), "ip": ip}
