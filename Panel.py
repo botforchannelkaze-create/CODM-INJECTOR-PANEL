@@ -20,10 +20,12 @@ KEY_EXPIRY = 180
 # CLEANUP FUNCTION
 # ======================
 def cleanup():
+
     now = time.time()
 
-    # remove expired tokens only
+    # remove expired tokens
     expired_tokens = [t for t,d in tokens.items() if now - d["time"] > TOKEN_EXPIRY]
+
     for t in expired_tokens:
         del tokens[t]
 
@@ -39,20 +41,24 @@ def token():
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
+    # only allow main page or work.ink
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
-    if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
-        return "Please wait before getting another key"
+    # IP cooldown protection
+    if ip in ip_cooldown:
+        remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+        if remaining > 0:
+            return f"Please wait {int(remaining)} seconds"
 
-    t = str(uuid.uuid4())
+    token = str(uuid.uuid4())
 
-    tokens[t] = {
+    tokens[token] = {
         "time": time.time(),
         "ip": ip
     }
 
-    return t
+    return token
 
 
 # ======================
@@ -66,21 +72,28 @@ def getkey():
     token = request.args.get("token")
     ip = request.remote_addr
 
-    if not token or token not in tokens:
+    if not token:
+        return "Access denied"
+
+    if token not in tokens:
         return "Access denied please go to main link"
 
     data = tokens[token]
 
+    # token expired
     if time.time() - data["time"] > TOKEN_EXPIRY:
         del tokens[token]
         return "Token expired"
 
+    # ip mismatch
     if data["ip"] != ip:
         del tokens[token]
         return "Access denied"
 
+    # one time token
     del tokens[token]
 
+    # start cooldown
     ip_cooldown[ip] = time.time()
 
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
@@ -98,6 +111,7 @@ def getkey():
 # ======================
 @app.route("/verify")
 def verify():
+
     key = request.args.get("key")
     device = request.args.get("device")
 
@@ -106,20 +120,20 @@ def verify():
 
     data = keys[key]
 
-    # EXPIRED CHECK
+    # expired key
     if time.time() > data["expiry"]:
         return "expired"
 
-    # FIRST LOGIN
+    # first login
     if data["device"] is None:
         data["device"] = device
         return "valid"
 
-    # SAME DEVICE
+    # same device
     if data["device"] == device:
         return "valid"
 
-    # OTHER DEVICE
+    # other device
     return "locked"
 
 
