@@ -1,99 +1,111 @@
 from flask import Flask, request
 from flask_cors import CORS
-import uuid, time, os
+import uuid
+import time
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# ======================
-# GLOBAL STORAGE
-# ======================
-keys = {}           # stores generated keys
-sessions = {}       # stores session tokens
-ip_cooldown = {}    # tracks cooldown per IP
+keys = {}
+tokens = {}
+ip_cooldown = {}
 
-# ======================
-# CONFIG
-# ======================
-TOKEN_EXPIRY = 20      # seconds for session token
-COOLDOWN = 60          # seconds cooldown per IP
-KEY_EXPIRY = 180       # seconds for key expiry
+TOKEN_EXPIRY = 20
+COOLDOWN = 9000
+KEY_EXPIRY = 180
 
 
 # ======================
 # CLEANUP FUNCTION
 # ======================
 def cleanup():
+
     now = time.time()
-    # expired session tokens
-    expired_tokens = [t for t,d in sessions.items() if now - d["time"] > TOKEN_EXPIRY]
+
+    # remove expired tokens
+    expired_tokens = [t for t,d in tokens.items() if now - d["time"] > TOKEN_EXPIRY]
     for t in expired_tokens:
-        del sessions[t]
-    # expired keys
+        del tokens[t]
+
+    # remove expired keys
     expired_keys = [k for k,d in keys.items() if now > d["expiry"]]
     for k in expired_keys:
         del keys[k]
 
 
 # ======================
-# CREATE SESSION TOKEN
+# CREATE TOKEN
 # ======================
-@app.route("/session")
-def create_session():
+@app.route("/token")
+def token():
+
     cleanup()
+
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
-    # only allow main link or work.ink
-    if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
-        return "Access denied, go through main link"
+    # ALLOW ONLY GPLINKS OR KEY PAGE
+    if ("gplinks.co" not in ref) and ("kaze-key-page.onrender.com" not in ref):
+        return "Please go to main link: https://gplinks.co/Kaze-DailyGetFreeKey"
 
-    # IP cooldown for session creation (spam prevention)
-    if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
+    # COOLDOWN PROTECTION
+    if ip in ip_cooldown:
         remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
-        return f"Wait {int(remaining)} seconds before requesting a new session"
+        if remaining > 0:
+            return f"Please wait {int(remaining)} seconds"
 
     token = str(uuid.uuid4())
-    sessions[token] = {"time": time.time(), "ip": ip, "used": False}
+
+    tokens[token] = {
+        "time": time.time(),
+        "ip": ip
+    }
 
     return token
 
 
 # ======================
-# GET KEY (One-time)
+# GET KEY
 # ======================
 @app.route("/getkey")
-def get_key():
+def getkey():
+
     cleanup()
+
     token = request.args.get("token")
     ip = request.remote_addr
 
-    if not token or token not in sessions:
-        return "Access denied: invalid session, go through main link"
+    if not token:
+        return "Access denied"
 
-    session = sessions[token]
+    if token not in tokens:
+        return "Access denied please go to main link"
+
+    data = tokens[token]
 
     # token expired
-    if time.time() - session["time"] > TOKEN_EXPIRY:
-        del sessions[token]
-        return "Session expired"
+    if time.time() - data["time"] > TOKEN_EXPIRY:
+        del tokens[token]
+        return "Token expired"
 
-    # token already used
-    if session["used"]:
-        return "Session already used"
+    # ip mismatch
+    if data["ip"] != ip:
+        del tokens[token]
+        return "Access denied"
 
-    # IP mismatch
-    if session["ip"] != ip:
-        del sessions[token]
-        return "Access denied: IP mismatch"
+    # ONE TIME TOKEN
+    del tokens[token]
 
-    # mark token as used
-    session["used"] = True
+    # START COOLDOWN
     ip_cooldown[ip] = time.time()
 
-    # generate key
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
-    keys[key] = {"expiry": time.time() + KEY_EXPIRY, "device": None}
+
+    keys[key] = {
+        "expiry": time.time() + KEY_EXPIRY,
+        "device": None
+    }
 
     return f"YOUR KEY: {key}"
 
@@ -102,8 +114,10 @@ def get_key():
 # VERIFY KEY
 # ======================
 @app.route("/verify")
-def verify_key():
+def verify():
+
     cleanup()
+
     key = request.args.get("key")
     device = request.args.get("device")
 
@@ -112,18 +126,20 @@ def verify_key():
 
     data = keys[key]
 
+    # key expired
     if time.time() > data["expiry"]:
         return "expired"
 
-    # first login bind device
+    # FIRST LOGIN BIND DEVICE
     if data["device"] is None:
         data["device"] = device
         return "valid"
 
+    # SAME DEVICE
     if data["device"] == device:
         return "valid"
 
-    # different device
+    # OTHER DEVICE
     return "locked"
 
 
