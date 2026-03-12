@@ -11,10 +11,10 @@ CORS(app)
 # ======================
 # Constants
 # ======================
-TOKEN_EXPIRY = 180       # token valid for 3 minutes
-KEY_EXPIRY = 1800        # key valid for 30 minutes
+TOKEN_EXPIRY = 60       # token valid for 3 minutes
+KEY_EXPIRY = 180        # key valid for 30 minutes
 COOLDOWN = 10            # seconds between token requests
-KEY_LIMIT = 90           # 90 seconds before same IP can get new key
+KEY_LIMIT = 60           # 90 seconds before same IP can get new key
 DATA_FILE = "database.json"
 
 # ======================
@@ -40,14 +40,21 @@ def save_db():
 # ======================
 def cleanup():
     now = time.time()
+
     # remove expired tokens
     for t in list(db["tokens"].keys()):
         if now - db["tokens"][t]["time"] > TOKEN_EXPIRY:
             del db["tokens"][t]
+
     # remove expired keys
     for k in list(db["keys"].keys()):
         if now > db["keys"][k]["expiry"]:
             del db["keys"][k]
+
+    # remove expired IP limits (so same IP can get key after KEY_LIMIT)
+    for ip in list(db["ip_daily"].keys()):
+        if now - db["ip_daily"][ip] > KEY_LIMIT:
+            del db["ip_daily"][ip]
 
 # ======================
 # Home
