@@ -12,7 +12,7 @@ CORS(app)
 # Constants
 # ======================
 TOKEN_EXPIRY = 60       # seconds
-KEY_EXPIRY = 180      # 24h
+KEY_EXPIRY = 90      # 24h
 COOLDOWN = 10           # seconds between token requests
 DATA_FILE = "database.json"
 
@@ -55,7 +55,7 @@ def token():
     #     return "Access denied please go to main link",403
 
     # 1 key per day limit
-    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < 60:
+    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < 90:
         return "Access denied please go to main link",403
 
     # cooldown
@@ -136,3 +136,4 @@ def verify():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+    
