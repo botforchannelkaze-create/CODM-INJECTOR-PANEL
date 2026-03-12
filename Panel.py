@@ -98,9 +98,6 @@ def getkey():
 # ======================
 @app.route("/verify")
 def verify():
-
-    cleanup()
-
     key = request.args.get("key")
     device = request.args.get("device")
 
