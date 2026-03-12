@@ -11,9 +11,10 @@ CORS(app)
 # ======================
 # Constants
 # ======================
-TOKEN_EXPIRY = 60       # seconds
-KEY_EXPIRY = 90      # 24h
+TOKEN_EXPIRY = 60       # token valid for 60 seconds
+KEY_EXPIRY = 180        # key valid for 180 seconds
 COOLDOWN = 10           # seconds between token requests
+KEY_LIMIT = 90          # 90 seconds before same IP can get new key
 DATA_FILE = "database.json"
 
 # ======================
@@ -35,6 +36,23 @@ def save_db():
         json.dump(db,f)
 
 # ======================
+# Cleanup expired data
+# ======================
+def cleanup():
+
+    now = time.time()
+
+    # remove expired tokens
+    for t in list(db["tokens"].keys()):
+        if now - db["tokens"][t]["time"] > TOKEN_EXPIRY:
+            del db["tokens"][t]
+
+    # remove expired keys
+    for k in list(db["keys"].keys()):
+        if now > db["keys"][k]["expiry"]:
+            del db["keys"][k]
+
+# ======================
 # Home
 # ======================
 @app.route("/")
@@ -46,28 +64,30 @@ def home():
 # ======================
 @app.route("/token")
 def token():
-    ref = request.headers.get("Referer","")
+
+    cleanup()
+
     ip = request.remote_addr
     now = time.time()
 
-    # Check referrer (optional, enable if using Work.ink)
-    # if "work.ink" not in ref:
-    #     return "Access denied please go to main link",403
-
-    # 1 key per day limit
-    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < 90:
+    # 90 second key limit per IP
+    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < KEY_LIMIT:
         return "Access denied please go to main link",403
 
-    # cooldown
+    # cooldown protection
     if ip in db["cooldown"] and now - db["cooldown"][ip] < COOLDOWN:
-        return f"Cooldown active. Wait {int(COOLDOWN - (now - db['cooldown'][ip]))}s",429
+        wait = int(COOLDOWN - (now - db["cooldown"][ip]))
+        return f"Cooldown active. Wait {wait}s",429
 
     token_id = str(uuid.uuid4())
+
     db["tokens"][token_id] = {
         "ip": ip,
         "time": now
     }
+
     db["cooldown"][ip] = now
+
     save_db()
 
     return token_id
@@ -77,6 +97,9 @@ def token():
 # ======================
 @app.route("/getkey")
 def getkey():
+
+    cleanup()
+
     token_id = request.args.get("token")
     ip = request.remote_addr
     now = time.time()
@@ -85,30 +108,42 @@ def getkey():
         return jsonify({"status":"error","message":"Invalid token"}),403
 
     data = db["tokens"][token_id]
+
     if data["ip"] != ip:
         return jsonify({"status":"error","message":"IP mismatch"}),403
 
     if now - data["time"] > TOKEN_EXPIRY:
+        del db["tokens"][token_id]
+        save_db()
         return jsonify({"status":"error","message":"Token expired"}),403
 
     # Generate key
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
+
     db["keys"][key] = {
         "expiry": now + KEY_EXPIRY,
         "device": None
     }
 
     db["ip_daily"][ip] = now
+
     del db["tokens"][token_id]
+
     save_db()
 
-    return jsonify({"status":"success","key": key})
+    return jsonify({
+        "status":"success",
+        "key": key
+    })
 
 # ======================
 # Verify Key
 # ======================
 @app.route("/verify")
 def verify():
+
+    cleanup()
+
     key = request.args.get("key")
     device = request.args.get("device")
 
@@ -118,6 +153,8 @@ def verify():
     data = db["keys"][key]
 
     if time.time() > data["expiry"]:
+        del db["keys"][key]
+        save_db()
         return "expired"
 
     if data["device"] is None:
@@ -134,6 +171,5 @@ def verify():
 # Run
 # ======================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
-    
+    port = int(os.environ.get("PORT",10000))
+    app.run(host="0.0.0.0",port=port)
