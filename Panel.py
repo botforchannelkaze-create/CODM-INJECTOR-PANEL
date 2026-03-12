@@ -15,7 +15,6 @@ TOKEN_EXPIRY = 20
 COOLDOWN = 60
 KEY_EXPIRY = 180
 
-
 # ======================
 # CLEANUP FUNCTION
 # ======================
@@ -41,15 +40,18 @@ def token():
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
-    # only allow main page or work.ink
+    # allow only work.ink or your key page
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
-    # IP cooldown protection
-    if ip in ip_cooldown:
-        remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
-        if remaining > 0:
-            return f"Please wait {int(remaining)} seconds"
+    # NO cooldown if from main key page
+    if "kaze-key-page.onrender.com" not in ref:
+
+        if ip in ip_cooldown:
+            remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+
+            if remaining > 0:
+                return f"Please wait {int(remaining)} seconds"
 
     token = str(uuid.uuid4())
 
