@@ -55,7 +55,7 @@ def token():
     #     return "Access denied please go to main link",403
 
     # 1 key per day limit
-    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < 86400:
+    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < 60:
         return "Access denied please go to main link",403
 
     # cooldown
