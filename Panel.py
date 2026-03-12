@@ -45,7 +45,7 @@ def token():
     if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
         return "Please wait before getting another key"
 
-    t = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
+    t = str(uuid.uuid4())
 
     tokens[t] = {
         "time": time.time(),
@@ -83,7 +83,7 @@ def getkey():
 
     ip_cooldown[ip] = time.time()
 
-    key = str(uuid.uuid4())
+    key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
 
     keys[key] = {
         "expiry": time.time() + KEY_EXPIRY,
