@@ -13,7 +13,7 @@ ip_limit = {}
 
 TOKEN_EXPIRY = 20
 KEY_EXPIRY = 180
-KEY_INTERVAL = 60   # 12 hours
+KEY_INTERVAL = 43200   # 12 hours
 
 
 # ======================
