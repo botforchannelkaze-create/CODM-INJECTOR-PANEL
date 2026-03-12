@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
 import time
@@ -7,135 +7,89 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+# Database sa memory (Mas mainam kung sa Redis o SQLite pero ito muna para sa Render)
 keys = {}
-sessions = {}
-ip_limit = {}
+tokens = {}
+ip_cooldown = {}
+used_tokens = set() # Dagdag ito para hindi ma-reuse ang token
 
-TOKEN_EXPIRY = 20
-KEY_EXPIRY = 180
-KEY_INTERVAL = 60  # 12 hours
+TOKEN_EXPIRY = 60 # Gawin nating 1 minute para hindi sila masyadong madaliin
+COOLDOWN = 300   # 5 minutes cooldown bago makakuha ulit ng panibagong key
+KEY_EXPIRY = 86400 # 24 Hours para sa user convenience
 
-
-# ======================
-# CLEANUP
-# ======================
 def cleanup():
-
     now = time.time()
+    # Linisin ang expired tokens
+    for t in list(tokens.keys()):
+        if now - tokens[t]["time"] > TOKEN_EXPIRY:
+            del tokens[t]
+    # Linisin ang expired keys
+    for k in list(keys.keys()):
+        if now > keys[k]["expiry"]:
+            del keys[k]
 
-    # remove expired sessions
-    expired_sessions = [s for s,d in sessions.items() if now - d["time"] > TOKEN_EXPIRY]
-    for s in expired_sessions:
-        del sessions[s]
-
-    # remove expired keys
-    expired_keys = [k for k,d in keys.items() if now > d["expiry"]]
-    for k in expired_keys:
-        del keys[k]
-
-
-# ======================
-# CREATE SESSION TOKEN
-# ======================
-@app.route("/session")
-def session():
-
+@app.route("/token")
+def create_token():
     cleanup()
-
+    
+    # Mas mahigpit na check
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
-    ua = request.headers.get("User-Agent","")
 
-    # block bots / empty agents
-    if not ua:
-        return "Access denied"
+    # Siguraduhin na galing lang sa Work.ink ang request
+    if "work.ink" not in ref:
+        return "ERROR: Please use the official link.", 403
 
-    # allowed sources
-    allowed = [
-        "gplinks.co",
-        "kaze-key-page.onrender.com"
-    ]
+    # Cooldown Check
+    if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
+        return "COOLDOWN: Please wait 5 minutes.", 429
 
-    # if referrer exists but not allowed -> block
-    if ref and not any(site in ref for site in allowed):
-        return "Access denied. Use main link: https://gplinks.co/Kaze-DailyGetFreeKey"
-
-    # 12 hour limit
-    if ip in ip_limit:
-        remaining = KEY_INTERVAL - (time.time() - ip_limit[ip])
-        if remaining > 0:
-
-            hours = int(remaining // 3600)
-            minutes = int((remaining % 3600) // 60)
-
-            return f"You already generated a key. Try again in {hours}h {minutes}m"
-
-    token = str(uuid.uuid4())
-
-    sessions[token] = {
-        "ip": ip,
+    t = str(uuid.uuid4())
+    tokens[t] = {
         "time": time.time(),
-        "used": False
+        "ip": ip
     }
+    return t
 
-    return token
-
-
-# ======================
-# GENERATE KEY
-# ======================
 @app.route("/getkey")
 def getkey():
-
     cleanup()
-
-    token = request.args.get("token")
+    
+    token_input = request.args.get("token")
     ip = request.remote_addr
 
-    if not token:
-        return "Access denied"
+    # Check if token exists, not expired, and not yet used
+    if not token_input or token_input not in tokens:
+        return "ACCESS DENIED: Go back to the main link.", 403
+    
+    if token_input in used_tokens:
+        return "BYPASS DETECTED: Token already used.", 403
 
-    if token not in sessions:
-        return "Invalid session"
+    data = tokens[token_input]
 
-    data = sessions[token]
-
-    # session already used
-    if data["used"]:
-        return "Session already used"
-
-    # ip mismatch
-    if data["ip"] != ip:
-        return "Access denied"
-
-    # session expired
+    # Security Checks
     if time.time() - data["time"] > TOKEN_EXPIRY:
-        del sessions[token]
-        return "Session expired"
+        return "TOKEN EXPIRED: Refresh the link.", 403
+    if data["ip"] != ip:
+        return "IP MISMATCH: Don't use VPN/Proxy.", 403
 
-    sessions[token]["used"] = True
+    # Mark as used and start cooldown
+    used_tokens.add(token_input)
+    ip_cooldown[ip] = time.time()
+    del tokens[token_input]
 
-    # register ip usage
-    ip_limit[ip] = time.time()
-
+    # Generate the actual key
     key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
-
     keys[key] = {
         "expiry": time.time() + KEY_EXPIRY,
         "device": None
     }
 
-    return f"YOUR KEY: {key}"
+    # I-return natin bilang JSON para mas malinis sa website mo
+    return jsonify({"status": "success", "key": key})
 
-
-# ======================
-# VERIFY KEY
-# ======================
 @app.route("/verify")
 def verify():
-
-    cleanup()
-
     key = request.args.get("key")
     device = request.args.get("device")
 
@@ -144,26 +98,17 @@ def verify():
 
     data = keys[key]
 
-    # key expired
     if time.time() > data["expiry"]:
-        del keys[key]
         return "expired"
 
-    # first login bind device
     if data["device"] is None:
         data["device"] = device
         return "valid"
 
-    # same device
     if data["device"] == device:
         return "valid"
 
-    # other device blocked
     return "locked"
 
-
-# ======================
-# RUN SERVER
-# ======================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT",10000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
