@@ -29,7 +29,6 @@ def cleanup():
     for t in expired_tokens:
         del tokens[t]
 
-
 # ======================
 # CREATE TOKEN
 # ======================
@@ -45,13 +44,14 @@ def token():
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
-    # ALWAYS apply cooldown
-    if ip in ip_cooldown:
+    # APPLY cooldown ONLY if not coming from work.ink
+    if "work.ink" not in ref:
 
-        remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+        if ip in ip_cooldown:
+            remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
 
-        if remaining > 0:
-            return f"Please wait {int(remaining)} seconds"
+            if remaining > 0:
+                return f"Please wait {int(remaining)} seconds"
 
     token = str(uuid.uuid4())
 
@@ -61,6 +61,7 @@ def token():
     }
 
     return token
+
 
 
 # ======================
