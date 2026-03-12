@@ -45,7 +45,7 @@ def token():
     if ip in ip_cooldown and time.time() - ip_cooldown[ip] < COOLDOWN:
         return "Please wait before getting another key"
 
-    t = str(uuid.uuid4())
+    t = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
 
     tokens[t] = {
         "time": time.time(),
