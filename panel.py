@@ -11,14 +11,14 @@ CORS(app)
 # ======================
 # Constants
 # ======================
-TOKEN_EXPIRY = 60       # token valid 60s
-KEY_EXPIRY = 180        # key valid 180s
-COOLDOWN = 10           # seconds between token requests
-KEY_LIMIT = 60          # seconds before same IP can get new key
+TOKEN_EXPIRY = 60
+KEY_EXPIRY = 180
+COOLDOWN = 10
+KEY_LIMIT = 60
 DATA_FILE = "database.json"
 
 # ======================
-# Load / Save DB
+# Load DB
 # ======================
 if os.path.exists(DATA_FILE):
     with open(DATA_FILE,"r") as f:
@@ -27,8 +27,8 @@ else:
     db = {
         "keys":{},
         "tokens":{},
-        "ip_daily":{},
-        "cooldown":{}
+        "ip_limit":{},
+        "cooldowns":{}
     }
 
 def save_db():
@@ -36,9 +36,10 @@ def save_db():
         json.dump(db,f)
 
 # ======================
-# Cleanup expired data
+# CLEANUP
 # ======================
 def cleanup():
+
     now = time.time()
 
     # remove expired tokens
@@ -52,19 +53,19 @@ def cleanup():
             del db["keys"][k]
 
     # remove expired IP limits
-    for ip in list(db["ip_daily"].keys()):
-        if now - db["ip_daily"][ip] > KEY_LIMIT:
-            del db["ip_daily"][ip]
+    for ip in list(db["ip_limit"].keys()):
+        if now - db["ip_limit"][ip] > KEY_LIMIT:
+            del db["ip_limit"][ip]
 
 # ======================
-# Home
+# HOME
 # ======================
 @app.route("/")
 def home():
     return "KAZE SERVER ONLINE 🚀"
 
 # ======================
-# Get Token
+# TOKEN
 # ======================
 @app.route("/token")
 def token():
@@ -74,14 +75,15 @@ def token():
     ip = request.remote_addr
     now = time.time()
 
-    # IP limit
-    if ip in db["ip_daily"] and now - db["ip_daily"][ip] < KEY_LIMIT:
-        return "Access denied please go to main link",403
+    # anti spam cooldown
+    if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
+        wait = int(COOLDOWN - (now - db["cooldowns"][ip]))
+        return f"Cooldown active wait {wait}s",429
 
-    # cooldown
-    if ip in db["cooldown"] and now - db["cooldown"][ip] < COOLDOWN:
-        wait = int(COOLDOWN - (now - db["cooldown"][ip]))
-        return f"Cooldown active. Wait {wait}s",429
+    # BLOCK if already generated key
+    if ip in db["ip_limit"]:
+        wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
+        return f"Wait {wait}s before getting new key",403
 
     token_id = str(uuid.uuid4())
 
@@ -90,14 +92,14 @@ def token():
         "time": now
     }
 
-    db["cooldown"][ip] = now
+    db["cooldowns"][ip] = now
 
     save_db()
 
     return token_id
 
 # ======================
-# Get Key
+# GENERATE KEY
 # ======================
 @app.route("/getkey")
 def getkey():
@@ -129,7 +131,8 @@ def getkey():
         "device": None
     }
 
-    db["ip_daily"][ip] = now
+    # lock IP for KEY_LIMIT seconds
+    db["ip_limit"][ip] = now
 
     del db["tokens"][token_id]
 
@@ -137,11 +140,11 @@ def getkey():
 
     return jsonify({
         "status":"success",
-        "key":key
+        "key": key
     })
 
 # ======================
-# Verify Key
+# VERIFY KEY
 # ======================
 @app.route("/verify")
 def verify():
@@ -172,65 +175,7 @@ def verify():
     return "locked"
 
 # ======================
-# ADMIN: VIEW DATABASE
-# ======================
-@app.route("/admin_debug")
-def admin_debug():
-
-    cleanup()
-
-    return jsonify({
-        "active_ips": db["ip_daily"],
-        "cooldowns": db["cooldown"],
-        "active_keys": db["keys"],
-        "tokens": db["tokens"]
-    })
-
-# ======================
-# ADMIN: REMOVE IP
-# ======================
-@app.route("/admin_remove_ip/<ip>")
-def admin_remove_ip(ip):
-
-    removed = False
-
-    if ip in db["ip_daily"]:
-        del db["ip_daily"][ip]
-        removed = True
-
-    if ip in db["cooldown"]:
-        del db["cooldown"][ip]
-        removed = True
-
-    save_db()
-
-    if removed:
-        return f"IP {ip} removed successfully"
-    else:
-        return "IP not found"
-
-# ======================
-# ADMIN: CLEAR ALL IP
-# ======================
-@app.route("/admin_clear_all")
-def admin_clear_all():
-
-    db["ip_daily"].clear()
-    db["cooldown"].clear()
-
-    save_db()
-
-    return "All IP locks cleared"
-
-# ======================
-# SHOW CURRENT IP
-# ======================
-@app.route("/myip")
-def myip():
-    return request.remote_addr
-
-# ======================
-# Run Server
+# RUN
 # ======================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT",10000))
