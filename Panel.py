@@ -11,9 +11,10 @@ keys = {}
 tokens = {}
 ip_cooldown = {}
 
-TOKEN_EXPIRY = 20
-COOLDOWN = 60
+TOKEN_EXPIRY = 10
+COOLDOWN = 80
 KEY_EXPIRY = 180
+
 
 # ======================
 # CLEANUP FUNCTION
@@ -40,18 +41,17 @@ def token():
     ref = request.headers.get("Referer","")
     ip = request.remote_addr
 
-    # allow only work.ink or your key page
+    # allow only work.ink or key page
     if ("work.ink" not in ref) and ("kaze-key-page.onrender.com" not in ref):
         return "Access denied"
 
-    # NO cooldown if from main key page
-    if "kaze-key-page.onrender.com" not in ref:
+    # ALWAYS apply cooldown
+    if ip in ip_cooldown:
 
-        if ip in ip_cooldown:
-            remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
+        remaining = COOLDOWN - (time.time() - ip_cooldown[ip])
 
-            if remaining > 0:
-                return f"Please wait {int(remaining)} seconds"
+        if remaining > 0:
+            return f"Please wait {int(remaining)} seconds"
 
     token = str(uuid.uuid4())
 
@@ -126,7 +126,7 @@ def verify():
     if time.time() > data["expiry"]:
         return "expired"
 
-    # first login
+    # first login binds device
     if data["device"] is None:
         data["device"] = device
         return "valid"
@@ -135,7 +135,7 @@ def verify():
     if data["device"] == device:
         return "valid"
 
-    # other device
+    # other device blocked
     return "locked"
 
 
