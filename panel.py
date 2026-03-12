@@ -12,7 +12,7 @@ CORS(app)
 # Constants
 # ======================
 TOKEN_EXPIRY = 60       # seconds
-KEY_EXPIRY = 60      # 24h
+KEY_EXPIRY = 180      # 24h
 COOLDOWN = 10           # seconds between token requests
 DATA_FILE = "database.json"
 
