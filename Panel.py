@@ -12,7 +12,7 @@ tokens = {}
 ip_cooldown = {}
 
 TOKEN_EXPIRY = 20
-COOLDOWN = 60
+COOLDOWN = 9000
 KEY_EXPIRY = 180
 
 
