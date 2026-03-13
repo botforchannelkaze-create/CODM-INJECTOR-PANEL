@@ -1,96 +1,58 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import uuid
-import time
-import json
-import os
-import random
-import string
+import uuid, time, json, os, random, string
+import threading
 
 app = Flask(__name__)
 CORS(app)
 
-# ======================
-# Constants
-# ======================
-TOKEN_EXPIRY = 60       # seconds for token expiry
-KEY_EXPIRY = 1800       # 30 minutes for key expiry
+# ====== CONSTANTS ======
+TOKEN_EXPIRY = 60       # seconds
+KEY_EXPIRY_FREE = 1800 # 12 hours
+KEY_EXPIRY_VIP = {
+    "1d": 86400, "3d": 259200, "7d": 604800, "30d": 2592000, "lifetime": None
+}
 COOLDOWN = 10
-KEY_LIMIT = 600
+KEY_LIMIT = 1200
 DATA_FILE = "database.json"
 
-# ======================
-# Load DB
-# ======================
+# ====== LOAD DB ======
 if os.path.exists(DATA_FILE):
     with open(DATA_FILE, "r") as f:
         db = json.load(f)
 else:
-    db = {
-        "keys": {},
-        "tokens": {},
-        "ip_limit": {},
-        "cooldowns": {}
-    }
+    db = {"keys": {}, "tokens": {}, "ip_limit": {}, "cooldowns": {}}
 
 def save_db():
     with open(DATA_FILE, "w") as f:
-        json.dump(db, f)
+        json.dump(db, f, indent=2)
 
-# ======================
-# CLEANUP
-# ======================
+# ====== CLEANUP ======
 def cleanup():
     now = time.time()
-
-    # Remove expired tokens
     for t in list(db["tokens"].keys()):
         if now - db["tokens"][t]["time"] > TOKEN_EXPIRY:
             del db["tokens"][t]
 
-    # Do NOT delete expired keys here
-    # We'll handle expired keys in /verify instead
-
-    # Remove expired IP limits
-    for ip in list(db["ip_limit"].keys()):
-        if now - db["ip_limit"][ip] > KEY_LIMIT:
-            del db["ip_limit"][ip]
-
-# ======================
-# HOME
-# ======================
-@app.route("/")
-def home():
-    return "KAZE SERVER ONLINE 🚀"
-
-# ======================
-# TOKEN
-# ======================
+# ====== TOKEN ======
 @app.route("/token")
 def token():
     cleanup()
     ip = request.remote_addr
     now = time.time()
-
-    # anti spam cooldown
     if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
         wait = int(COOLDOWN - (now - db["cooldowns"][ip]))
-        return f"Cooldown active wait {wait}s", 429
-
-    # BLOCK if already generated key
-    if ip in db["ip_limit"]:
+        return f"Cooldown {wait}s", 429
+    if ip in db["ip_limit"] and now - db["ip_limit"][ip] < KEY_LIMIT:
         wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-        return f"Wait {wait}s before getting new key", 403
-
+        return f"Wait {wait}s", 403
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
     db["cooldowns"][ip] = now
     save_db()
     return token_id
 
-# ======================
-# GENERATE KEY
-# ======================
+# ====== GET KEY (FOR FREE/DEFAULT) ======
 @app.route("/getkey")
 def getkey():
     cleanup()
@@ -99,35 +61,34 @@ def getkey():
     now = time.time()
 
     if not token_id or token_id not in db["tokens"]:
-        return jsonify({"status": "error", "message": "Please try again later"}), 403
+        return jsonify({"status":"error","message":"Please try again later"}), 403
 
     data = db["tokens"][token_id]
-    if data["ip"] != ip:
-        return jsonify({"status": "error", "message": "IP mismatch"}), 403
-    if now - data["time"] > TOKEN_EXPIRY:
+    if data["ip"] != ip or now - data["time"] > TOKEN_EXPIRY:
         del db["tokens"][token_id]
         save_db()
-        return jsonify({"status": "error", "message": "Token expired"}), 403
+        return jsonify({"status":"error","message":"Token expired or IP mismatch"}), 403
 
-    # Generate key with uppercase, lowercase, digits
+    # Generate free key
     key = "KazeFreeKey-" + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    db["keys"][key] = {"expiry": now + KEY_EXPIRY_FREE, "device": None, "type": "FREE"}
 
-    db["keys"][key] = {
-        "expiry": now + KEY_EXPIRY,
-        "device": None
-    }
-
-    # lock IP for KEY_LIMIT seconds
     db["ip_limit"][ip] = now
-
     del db["tokens"][token_id]
     save_db()
+    return jsonify({"status":"success","key":key})
 
-    return jsonify({"status": "success", "key": key})
+# ====== VIP KEY GENERATOR (FOR BOT) ======
+def generate_vip_key(duration):
+    key = "Kaze-" + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    expiry = None
+    if duration in KEY_EXPIRY_VIP and KEY_EXPIRY_VIP[duration]:
+        expiry = time.time() + KEY_EXPIRY_VIP[duration]
+    db["keys"][key] = {"expiry": expiry, "device": None, "type": "VIP"}
+    save_db()
+    return key
 
-# ======================
-# VERIFY KEY
-# ======================
+# ====== VERIFY ======
 @app.route("/verify")
 def verify():
     cleanup()
@@ -139,24 +100,22 @@ def verify():
 
     data = db["keys"][key]
 
-    # Check expiration
-    if time.time() > data["expiry"]:
+    if data.get("expiry") and time.time() > data["expiry"]:
+        data["expired"] = True
+        save_db()
         return "expired"
 
-    # Assign device if first use
-    if data["device"] is None:
+    if data.get("device") is None:
         data["device"] = device
         save_db()
         return "valid"
 
-    if data["device"] == device:
+    if data.get("device") == device:
         return "valid"
 
     return "locked"
 
-# ======================
-# RUN SERVER
-# ======================
+# ====== RUN SERVER ======
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
