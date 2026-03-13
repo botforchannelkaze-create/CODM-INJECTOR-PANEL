@@ -14,9 +14,9 @@ CORS(app)
 # Constants
 # ======================
 TOKEN_EXPIRY = 60
-KEY_EXPIRY = 1800
+KEY_EXPIRY = 180
 COOLDOWN = 10
-KEY_LIMIT = 1200
+KEY_LIMIT = 600
 DATA_FILE = "database.json"
 
 # ======================
@@ -113,7 +113,7 @@ def getkey():
     now = time.time()
 
     if not token_id or token_id not in db["tokens"]:
-        return jsonify({"status":"error","message":"Invalid token"}),403
+        return jsonify({"status":"error","message":"Please try again later"}),403
 
     data = db["tokens"][token_id]
 
@@ -126,7 +126,7 @@ def getkey():
         return jsonify({"status":"error","message":"Token expired"}),403
 
     # generate key
-    key = "KazeFreeKey-" + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    key = "Kaze-FreeKey" + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
 
     db["keys"][key] = {
         "expiry": now + KEY_EXPIRY,
