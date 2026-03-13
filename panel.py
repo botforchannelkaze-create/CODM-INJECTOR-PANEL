@@ -12,9 +12,9 @@ CORS(app)
 # Constants
 # ======================
 TOKEN_EXPIRY = 60
-KEY_EXPIRY = 180
+KEY_EXPIRY = 1800
 COOLDOWN = 10
-KEY_LIMIT = 60
+KEY_LIMIT = 1200
 DATA_FILE = "database.json"
 
 # ======================
@@ -148,7 +148,6 @@ def getkey():
 # ======================
 @app.route("/verify")
 def verify():
-
     cleanup()
 
     key = request.args.get("key")
@@ -159,9 +158,10 @@ def verify():
 
     data = db["keys"][key]
 
+    # Check expiration
     if time.time() > data["expiry"]:
-        del db["keys"][key]
-        save_db()
+        # DON'T delete key immediately
+        # del db["keys"][key]
         return "expired"
 
     if data["device"] is None:
@@ -173,7 +173,7 @@ def verify():
         return "valid"
 
     return "locked"
-
+    
 # ======================
 # RUN
 # ======================
