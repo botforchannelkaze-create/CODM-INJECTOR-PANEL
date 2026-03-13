@@ -4,6 +4,8 @@ import uuid
 import time
 import json
 import os
+import random
+import string
 
 app = Flask(__name__)
 CORS(app)
@@ -124,7 +126,7 @@ def getkey():
         return jsonify({"status":"error","message":"Token expired"}),403
 
     # generate key
-    key = "KazeFreeKey-" + uuid.uuid4().hex[:12].upper()
+    key = "KazeFreeKey-" + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
 
     db["keys"][key] = {
         "expiry": now + KEY_EXPIRY,
