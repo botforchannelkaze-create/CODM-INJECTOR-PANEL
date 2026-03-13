@@ -8,7 +8,7 @@ CORS(app)
 
 # ====== CONSTANTS ======
 TOKEN_EXPIRY = 60       # seconds
-KEY_EXPIRY_FREE = 43200 # 12 hours
+KEY_EXPIRY_FREE = 25200 # 12 hours
 KEY_EXPIRY_VIP = {
     "1d": 86400, "3d": 259200, "7d": 604800, "30d": 2592000, "lifetime": None
 }
@@ -61,7 +61,7 @@ def getkey():
     now = time.time()
 
     if not token_id or token_id not in db["tokens"]:
-        return jsonify({"status":"error","message":"Please try again later"}), 403
+        return jsonify({"status":"error","message":"Already generated try later"}), 403
 
     data = db["tokens"][token_id]
     if data["ip"] != ip or now - data["time"] > TOKEN_EXPIRY:
