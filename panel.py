@@ -8,12 +8,12 @@ CORS(app)
 
 # ====== CONSTANTS ======
 TOKEN_EXPIRY = 60       # seconds
-KEY_EXPIRY_FREE = 1800 # 12 hours
+KEY_EXPIRY_FREE = 43200 # 12 hours
 KEY_EXPIRY_VIP = {
     "1d": 86400, "3d": 259200, "7d": 604800, "30d": 2592000, "lifetime": None
 }
 COOLDOWN = 10
-KEY_LIMIT = 1200
+KEY_LIMIT = 1000
 DATA_FILE = "database.json"
 
 # ====== LOAD DB ======
