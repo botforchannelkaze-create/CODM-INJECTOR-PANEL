@@ -99,17 +99,24 @@ def token():
     cleanup()
     ip = request.remote_addr
     now = time.time()
+    
+    # Para sa bot, walang cooldown
     source = request.args.get("src", "site")
+    
     if source != "bot":
         if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
             wait = int(COOLDOWN - (now - db["cooldowns"][ip]))
-            return f"Maghintay ng {wait}s bago makakuha ng token", 429
+            return f"Cooldown active wait {wait}s", 429
         if ip in db["ip_limit"]:
             wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-            return f"Maghintay ng {wait}s bago makakuha ng bagong key", 403
+            return f"Wait {wait}s before getting new key", 403
+    
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
-    db["cooldowns"][ip] = now
+    
+    if source != "bot":
+        db["cooldowns"][ip] = now  # cooldown para sa site lang
+
     save_db()
     return token_id
 
@@ -120,8 +127,8 @@ def token():
 def getkey():
     token_id = request.args.get("token")
     source = request.args.get("src", "site")
-    duration = request.args.get("duration", "3m")
-
+    duration = request.args.get("duration", "12h")  # default 12 hours for site
+    
     if not token_id or token_id not in db["tokens"]:
         return jsonify({"status":"error","message":"invalid token"}),403
 
@@ -133,8 +140,12 @@ def getkey():
         save_db()
         return jsonify({"status":"error","message":"token expired"}),403
 
-    # 🔑 KEY PREFIX
-    prefix = "Kaze-" if source=="bot" else "KazeFreeKey-"
+    # 🔑 KEY PREFIX SYSTEM
+    if source == "bot":
+        prefix = "Kaze-"
+    else:
+        prefix = "KazeFreeKey-"
+
     key = prefix + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
     expiry_seconds = convert_duration(duration)
 
@@ -145,9 +156,10 @@ def getkey():
         "login_time": None
     }
 
-    # Lock IP only if source is site
+    # Lock IP para sa site lang
     if source != "bot":
         db["ip_limit"][token_data["ip"]] = now
+
     del db["tokens"][token_id]
     save_db()
 
