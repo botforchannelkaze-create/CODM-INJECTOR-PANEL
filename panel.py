@@ -100,16 +100,8 @@ def token():
     ip = request.remote_addr
     now = time.time()
 
-    source = request.args.get("src", "site")
-
-    # ==============================
-    # CHECK COOLDOWN PARA SA SITE
-    # ==============================
-    if source != "bot":
-        if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
-            # Redirect user sa main page kung nag try bago matapos ang cooldown
-            return jsonify({
-                "status": "cooldown",
+    if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
+        return jsonify({"status":"cooldown"})
                 "redirect": "https://kazehayamodz-main-page.onrender.com"
             })
 
