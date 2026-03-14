@@ -108,9 +108,9 @@ def token():
         # 1. Cooldown check
         if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
             return jsonify({
-                "status":"cooldown",
-                "redirect":"https://kazehayamodz-main-page.onrender.com"
-            })
+    "status":"cooldown",
+    "redirect":"https://kazehayamodz-main-page.onrender.com"
+})
 
         # 2. IP limit check
         if ip in db["ip_limit"]:
