@@ -126,8 +126,18 @@ def token():
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
 
-    if source != "bot":
-        db["cooldowns"][ip] = now  # 5-minute cooldown
+    ip = token_data["ip"]
+
+if source != "bot":
+    if ip in db["ip_limit"]:
+        wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
+        if wait > 0:
+            return jsonify({
+                "status": "error",
+                "message": f"Please wait {wait}s before generating again"
+            }), 403
+
+    db["ip_limit"][ip] = now# 5-minute cooldown
 
     save_db()
 
@@ -148,22 +158,37 @@ def getkey():
 
     now = time.time()
 
-    if not token_id or token_id not in db["tokens"]:
-        token_id = str(uuid.uuid4())
-        db["tokens"][token_id] = {
-            "ip": request.remote_addr,
-            "time": now
-        }
+    # ❗ STRICT TOKEN CHECK
+    if not token_id:
+        return jsonify({
+            "status": "error",
+            "message": "Missing token"
+        }), 403
+
+    if token_id not in db["tokens"]:
+        return jsonify({
+            "status": "error",
+            "message": "Token expired. Please generate again."
+        }), 403
 
     token_data = db["tokens"][token_id]
+    ip = token_data["ip"]
 
-    # 🔑 EY PREFIX
-    if source == "bot":
-        prefix = "Kaze-"
-    else:
-        prefix = "KazeFreeKey-"
+    # 🔒 Anti spam check
+    if ip in db["ip_limit"]:
+        wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
+        if wait > 0:
+            return jsonify({
+                "status": "wait",
+                "message": f"Please wait {wait}s before generating again"
+            }), 403
 
-    key = prefix + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    # 🔑 KEY PREFIX
+    prefix = "Kaze-" if source == "bot" else "KazeFreeKey-"
+
+    key = prefix + ''.join(
+        random.choices(string.ascii_letters + string.digits, k=12)
+    )
 
     expiry_seconds = convert_duration(duration)
 
@@ -174,16 +199,17 @@ def getkey():
         "login_time": None
     }
 
-    db["ip_limit"][token_data["ip"]] = now
+    # set IP cooldown
+    db["ip_limit"][ip] = now
 
-    if token_id in db["tokens"]:
-        del db["tokens"][token_id]
+    # remove used token
+    del db["tokens"][token_id]
 
     save_db()
 
     return jsonify({
-        "status":"success",
-        "key":key,
+        "status": "success",
+        "key": key,
         "expires_in": expiry_seconds
     })
 
