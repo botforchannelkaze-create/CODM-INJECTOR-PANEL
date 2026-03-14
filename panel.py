@@ -6,7 +6,7 @@ import json
 import os
 import random
 import string
-import requests  # for telegram alerts
+import requests  # telegram alerts
 
 app = Flask(__name__)
 CORS(app)
@@ -16,7 +16,7 @@ CORS(app)
 # ======================
 TOKEN_EXPIRY = 60       # seconds for token expiry
 COOLDOWN = 10           # anti-spam cooldown
-KEY_LIMIT = 1000        # seconds before same IP can generate another key
+KEY_LIMIT = 1000         # seconds before same IP can generate another key
 DATA_FILE = "database.json"
 
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -45,11 +45,9 @@ def save_db():
 # ======================
 def cleanup():
     now = time.time()
-    # Remove expired tokens
     for t in list(db["tokens"].keys()):
         if now - db["tokens"][t]["time"] > TOKEN_EXPIRY:
             del db["tokens"][t]
-    # Remove expired IP limits
     for ip in list(db["ip_limit"].keys()):
         if now - db["ip_limit"][ip] > KEY_LIMIT:
             del db["ip_limit"][ip]
@@ -75,7 +73,6 @@ def send_telegram_alert(message: str):
 # DURATION CONVERTER
 # ======================
 def convert_duration(duration: str):
-    """Converts duration string to seconds"""
     duration = duration.lower()
     if duration.endswith("m"):
         return int(duration[:-1]) * 60
@@ -102,12 +99,14 @@ def token():
     cleanup()
     ip = request.remote_addr
     now = time.time()
-    if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
-        wait = int(COOLDOWN - (now - db["cooldowns"][ip]))
-        return f"Cooldown active wait {wait}s", 429
-    if ip in db["ip_limit"]:
-        wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-        return f"Wait {wait}s before getting new key", 403
+    source = request.args.get("src", "site")
+    if source != "bot":
+        if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
+            wait = int(COOLDOWN - (now - db["cooldowns"][ip]))
+            return f"Maghintay ng {wait}s bago makakuha ng token", 429
+        if ip in db["ip_limit"]:
+            wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
+            return f"Maghintay ng {wait}s bago makakuha ng bagong key", 403
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
     db["cooldowns"][ip] = now
@@ -119,10 +118,9 @@ def token():
 # ======================
 @app.route("/getkey")
 def getkey():
-
     token_id = request.args.get("token")
-    source = request.args.get("src", "site")  # default site
-    duration = request.args.get("duration", "30m")  # default 30 minutes
+    source = request.args.get("src", "site")
+    duration = request.args.get("duration", "3m")
 
     if not token_id or token_id not in db["tokens"]:
         return jsonify({"status":"error","message":"invalid token"}),403
@@ -135,14 +133,9 @@ def getkey():
         save_db()
         return jsonify({"status":"error","message":"token expired"}),403
 
-    # 🔑 KEY PREFIX SYSTEM
-    if source == "bot":
-        prefix = "Kaze-"
-    else:
-        prefix = "KazeFreeKey-"
-
+    # 🔑 KEY PREFIX
+    prefix = "Kaze-" if source=="bot" else "KazeFreeKey-"
     key = prefix + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-
     expiry_seconds = convert_duration(duration)
 
     db["keys"][key] = {
@@ -152,10 +145,10 @@ def getkey():
         "login_time": None
     }
 
-    # Lock IP
-    db["ip_limit"][token_data["ip"]] = now
+    # Lock IP only if source is site
+    if source != "bot":
+        db["ip_limit"][token_data["ip"]] = now
     del db["tokens"][token_id]
-
     save_db()
 
     return jsonify({
