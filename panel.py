@@ -101,33 +101,17 @@ def token():
     now = time.time()
     source = request.args.get("src", "site")
 
-    # ==============================
-    # CHECK COOLDOWN PARA SA SITE
-    # ==============================
+    # CHECK COOLDOWN ONLY IF IP ALREADY HAS ONE
     if source != "bot":
-        # 1. Cooldown check
-        if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
-            return jsonify({
-    "status":"cooldown",
-    "redirect":"https://kazehayamodz-main-page.onrender.com"
-})
-
-        # 2. IP limit check
-        if ip in db["ip_limit"]:
-            wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-            if wait > 0:
+        if ip in db["cooldowns"]:
+            elapsed = now - db["cooldowns"][ip]
+            if elapsed < COOLDOWN:
                 return jsonify({
-                    "status":"wait",
-                    "message": f"Please wait {wait}s before generating again"
-                }), 403
+                    "status":"cooldown",
+                    "redirect":"https://kazehayamodz-main-page.onrender.com"
+                })
 
-        # mark current time sa ip_limit
-        db["ip_limit"][ip] = now
-        db["cooldowns"][ip] = now  # para sa site lang
-
-    # ==============================
     # GENERATE TOKEN
-    # ==============================
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
 
