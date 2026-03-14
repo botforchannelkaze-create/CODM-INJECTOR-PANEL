@@ -15,7 +15,7 @@ CORS(app)
 # CONSTANTS
 # ======================
 TOKEN_EXPIRY = 900       # seconds for token expiry
-COOLDOWN = 10           # anti-spam cooldown
+COOLDOWN = 60           # anti-spam cooldown
 KEY_LIMIT = 60         # seconds before same IP can generate another key
 DATA_FILE = "database.json"
 
@@ -99,26 +99,45 @@ def token():
     cleanup()
     ip = request.remote_addr
     now = time.time()
-    
+
     # Para sa bot, walang cooldown
     source = request.args.get("src", "site")
-    
+
+    # --------------------------
+    # 1 MINUTE COOLDOWN CHECK
+    # --------------------------
     if source != "bot":
         if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
-            wait = int(COOLDOWN - (now - db["cooldowns"][ip]))
-            return f"Cooldown active wait {wait}s", 429
+            # Redirect user to main page kung nag try bago matapos ang cooldown
+            return jsonify({
+                "status": "cooldown",
+                "redirect": "https://kazehayamodz-main-page.onrender.com"
+            })
+
+        # Existing key limit check (pwede pa rin i-keep)
         if ip in db["ip_limit"]:
             wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-            return f"Wait {wait}s before getting new key", 403
-    
+            return jsonify({
+                "status": "wait",
+                "message": f"Please wait {wait}s before getting a new key"
+            }), 403
+
+    # --------------------------
+    # GENERATE TOKEN
+    # --------------------------
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
-    
+
     if source != "bot":
-        db["cooldowns"][ip] = now  # cooldown para sa site lang
+        db["cooldowns"][ip] = now  # 1 minute cooldown para sa site lang
 
     save_db()
-    return token_id
+
+    # Return token as JSON
+    return jsonify({
+        "status": "success",
+        "token": token_id
+    })
 
 # ======================
 # GENERATE KEY
