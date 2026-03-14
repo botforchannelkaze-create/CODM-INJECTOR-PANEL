@@ -15,9 +15,8 @@ CORS(app)
 # CONSTANTS
 # ======================
 TOKEN_EXPIRY = 60       # seconds for token expiry
-KEY_EXPIRY = 60       # 30 minutes for free key
 COOLDOWN = 10           # anti-spam cooldown
-KEY_LIMIT = 1000          # time before same IP can generate another key
+KEY_LIMIT = 1000        # seconds before same IP can generate another key
 DATA_FILE = "database.json"
 
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -73,6 +72,22 @@ def send_telegram_alert(message: str):
         pass
 
 # ======================
+# DURATION CONVERTER
+# ======================
+def convert_duration(duration: str):
+    """Converts duration string to seconds"""
+    duration = duration.lower()
+    if duration.endswith("m"):
+        return int(duration[:-1]) * 60
+    if duration.endswith("h"):
+        return int(duration[:-1]) * 3600
+    if duration.endswith("d"):
+        return int(duration[:-1]) * 86400
+    if duration == "lifetime":
+        return 999999999
+    return 1800  # default 30 minutes
+
+# ======================
 # HOME
 # ======================
 @app.route("/")
@@ -107,12 +122,12 @@ def getkey():
 
     token_id = request.args.get("token")
     source = request.args.get("src", "site")  # default site
+    duration = request.args.get("duration", "30m")  # default 30 minutes
 
     if not token_id or token_id not in db["tokens"]:
         return jsonify({"status":"error","message":"invalid token"}),403
 
     now = time.time()
-
     token_data = db["tokens"][token_id]
 
     if now - token_data["time"] > TOKEN_EXPIRY:
@@ -128,23 +143,29 @@ def getkey():
 
     key = prefix + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
 
+    expiry_seconds = convert_duration(duration)
+
     db["keys"][key] = {
-        "expiry": now + KEY_EXPIRY,
+        "expiry": now + expiry_seconds,
         "device": None,
         "revoked": False,
         "login_time": None
     }
 
+    # Lock IP
+    db["ip_limit"][token_data["ip"]] = now
     del db["tokens"][token_id]
 
     save_db()
 
     return jsonify({
         "status":"success",
-        "key":key
+        "key":key,
+        "expires_in": expiry_seconds
     })
+
 # ======================
-# VERIFY KEY WITH ALERT
+# VERIFY KEY
 # ======================
 @app.route("/verify")
 def verify():
@@ -162,6 +183,7 @@ def verify():
         return "expired"
     if data["device"] is None:
         data["device"] = device
+        data["login_time"] = time.time()
         save_db()
         remaining = int(data["expiry"] - time.time())
         send_telegram_alert(f"✓ *Key Used*\nKey: `{key}`\nDevice: `{device}`\nExpires in: `{remaining}s`")
