@@ -104,31 +104,45 @@ def token():
 # ======================
 @app.route("/getkey")
 def getkey():
-    cleanup()
+
     token_id = request.args.get("token")
-    ip = request.remote_addr
-    now = time.time()
+    source = request.args.get("src", "site")  # default site
+
     if not token_id or token_id not in db["tokens"]:
-        return jsonify({"status": "error", "message": "Please try again later"}), 403
-    data = db["tokens"][token_id]
-    if data["ip"] != ip:
-        return jsonify({"status": "error", "message": "IP mismatch"}), 403
-    if now - data["time"] > TOKEN_EXPIRY:
+        return jsonify({"status":"error","message":"invalid token"}),403
+
+    now = time.time()
+
+    token_data = db["tokens"][token_id]
+
+    if now - token_data["time"] > TOKEN_EXPIRY:
         del db["tokens"][token_id]
         save_db()
-        return jsonify({"status": "error", "message": "Token expired"}), 403
-    # Generate key
-    key = "KazeFreeKey-" + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        return jsonify({"status":"error","message":"token expired"}),403
+
+    # 🔑 KEY PREFIX SYSTEM
+    if source == "bot":
+        prefix = "Kaze-"
+    else:
+        prefix = "KazeFreeKey-"
+
+    key = prefix + ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+
     db["keys"][key] = {
         "expiry": now + KEY_EXPIRY,
         "device": None,
-        "revoked": False
+        "revoked": False,
+        "login_time": None
     }
-    db["ip_limit"][ip] = now
-    del db["tokens"][token_id]
-    save_db()
-    return jsonify({"status": "success", "key": key})
 
+    del db["tokens"][token_id]
+
+    save_db()
+
+    return jsonify({
+        "status":"success",
+        "key":key
+    })
 # ======================
 # VERIFY KEY WITH ALERT
 # ======================
@@ -212,4 +226,3 @@ def stats():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-    
