@@ -14,7 +14,7 @@ CORS(app)
 # ======================
 # CONSTANTS
 # ======================
-TOKEN_EXPIRY = 300       # seconds for token expiry
+TOKEN_EXPIRY = 900       # seconds for token expiry
 COOLDOWN = 10           # anti-spam cooldown
 KEY_LIMIT = 600         # seconds before same IP can generate another key
 DATA_FILE = "database.json"
