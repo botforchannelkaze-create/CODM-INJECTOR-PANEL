@@ -150,11 +150,11 @@ def verify():
         data["device"] = device
         save_db()
         remaining = int(data["expiry"] - time.time())
-        send_telegram_alert(f"✅ *Key Used*\nKey: `{key}`\nDevice: `{device}`\nExpires in: `{remaining}s`")
+        send_telegram_alert(f"✓ *Key Used*\nKey: `{key}`\nDevice: `{device}`\nExpires in: `{remaining}s`")
         return "valid"
     if data["device"] == device:
         remaining = int(data["expiry"] - time.time())
-        send_telegram_alert(f"✅ *Key Used*\nKey: `{key}`\nDevice: `{device}`\nExpires in: `{remaining}s`")
+        send_telegram_alert(f"✓ *Key Used*\nKey: `{key}`\nDevice: `{device}`\nExpires in: `{remaining}s`")
         return "valid"
     send_telegram_alert(f"🔒 *Key Locked - Device Mismatch*\nKey: `{key}`\nDevice Attempt: `{device}`\nAssigned Device: `{data['device']}`")
     return "locked"
