@@ -100,21 +100,19 @@ def token():
     ip = request.remote_addr
     now = time.time()
 
-    # Para sa bot, walang cooldown
     source = request.args.get("src", "site")
 
-    # --------------------------
-    # 1 MINUTE COOLDOWN CHECK
-    # --------------------------
+    # ==============================
+    # CHECK COOLDOWN PARA SA SITE
+    # ==============================
     if source != "bot":
         if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
-            # Redirect user to main page kung nag try bago matapos ang cooldown
+            # Redirect user sa main page kung nag try bago matapos ang cooldown
             return jsonify({
                 "status": "cooldown",
                 "redirect": "https://kazehayamodz-main-page.onrender.com"
             })
 
-        # Existing key limit check (pwede pa rin i-keep)
         if ip in db["ip_limit"]:
             wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
             return jsonify({
@@ -122,18 +120,17 @@ def token():
                 "message": f"Please wait {wait}s before getting a new key"
             }), 403
 
-    # --------------------------
+    # ==============================
     # GENERATE TOKEN
-    # --------------------------
+    # ==============================
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
 
     if source != "bot":
-        db["cooldowns"][ip] = now  # 1 minute cooldown para sa site lang
+        db["cooldowns"][ip] = now  # 5-minute cooldown
 
     save_db()
 
-    # Return token as JSON
     return jsonify({
         "status": "success",
         "token": token_id
@@ -160,7 +157,7 @@ def getkey():
 
     token_data = db["tokens"][token_id]
 
-    # 🔑 KEY PREFIX
+    # 🔑 EY PREFIX
     if source == "bot":
         prefix = "Kaze-"
     else:
