@@ -14,9 +14,9 @@ CORS(app)
 # ======================
 # CONSTANTS
 # ======================
-TOKEN_EXPIRY = 900       # seconds for token expiry
-COOLDOWN = 60           # anti-spam cooldown
-KEY_LIMIT = 60         # seconds before same IP can generate another key
+TOKEN_EXPIRY = 5       # seconds for token expiry
+COOLDOWN = 120           # anti-spam cooldown
+KEY_LIMIT = 120         # seconds before same IP can generate another key
 DATA_FILE = "database.json"
 
 TELEGRAM_BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -99,18 +99,31 @@ def token():
     cleanup()
     ip = request.remote_addr
     now = time.time()
+    source = request.args.get("src", "site")
 
-    if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
-        return jsonify({"status":"cooldown"})
-                "redirect": "https://kazehayamodz-main-page.onrender.com"
+    # ==============================
+    # CHECK COOLDOWN PARA SA SITE
+    # ==============================
+    if source != "bot":
+        # 1. Cooldown check
+        if ip in db["cooldowns"] and now - db["cooldowns"][ip] < COOLDOWN:
+            return jsonify({
+                "status":"cooldown",
+                "redirect":"https://kazehayamodz-main-page.onrender.com"
             })
 
+        # 2. IP limit check
         if ip in db["ip_limit"]:
             wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-            return jsonify({
-                "status": "wait",
-                "message": f"Please wait {wait}s before getting a new key"
-            }), 403
+            if wait > 0:
+                return jsonify({
+                    "status":"wait",
+                    "message": f"Please wait {wait}s before generating again"
+                }), 403
+
+        # mark current time sa ip_limit
+        db["ip_limit"][ip] = now
+        db["cooldowns"][ip] = now  # para sa site lang
 
     # ==============================
     # GENERATE TOKEN
@@ -118,23 +131,9 @@ def token():
     token_id = str(uuid.uuid4())
     db["tokens"][token_id] = {"ip": ip, "time": now}
 
-    ip = token_data["ip"]
-
-if source != "bot":
-    if ip in db["ip_limit"]:
-        wait = int(KEY_LIMIT - (now - db["ip_limit"][ip]))
-        if wait > 0:
-            return jsonify({
-                "status": "error",
-                "message": f"Please wait {wait}s before generating again"
-            }), 403
-
-    db["ip_limit"][ip] = now# 5-minute cooldown
-
     save_db()
-
     return jsonify({
-        "status": "success",
+        "status":"success",
         "token": token_id
     })
 
